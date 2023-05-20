@@ -1,16 +1,15 @@
-#include "CMAC.h"
+#include "DesfireCrypto.h"
 
-void CMAC::initCMAC(const vector<uint8_t>& _key, const vector<uint8_t>& _iv) {
+void DesfireCrypto::initCMAC(const vector<uint8_t>& _key, const vector<uint8_t>& _iv) {
     aes = AES(AESKeyLength::AES_128);
     key = _key;
     iv = _iv;
-    generateSubkeys();
 }
 
-void CMAC::generateSubkeys() {
+void DesfireCrypto::generateSubkeys() {
 
     vector<uint8_t> zero(16, 0x00);
-    vector<unsigned char> key0 = aes.EncryptCBC(zero, key, zero);
+    vector<unsigned char> key0 = encryptAes(zero, key, zero);
 
     leftShift(key0, key1);
     if (key0[0] & 0x80) key1[key1.size() - 1] ^= 0x87U;
@@ -18,9 +17,14 @@ void CMAC::generateSubkeys() {
     leftShift(key1, key2);
     if (key1[0] & 0x80) key2[key2.size() - 1] ^= 0x87U;
 
+    vecPrint("key0", key0);
+    vecPrint("key1", key1);
+    vecPrint("key2", key2);
+
 }
 
-vector<uint8_t> CMAC::getCMAC(const vector<uint8_t>& data) {
+vector<uint8_t> DesfireCrypto::getCMAC(const vector<uint8_t>& data) {
+
     const int AES_BLOCK_SIZE = 16;
     bool isPaddingRequired = (data.size() % AES_BLOCK_SIZE != 0);
     int numberOfBlocks = isPaddingRequired ? data.size() / AES_BLOCK_SIZE + 1 : data.size() / AES_BLOCK_SIZE;
@@ -52,7 +56,7 @@ vector<uint8_t> CMAC::getCMAC(const vector<uint8_t>& data) {
         vector<unsigned char> temp = blocks[offset];
         vector<unsigned char> xorTemp(AES_BLOCK_SIZE, 0x00);
         xorVec(iv, temp, xorTemp);
-        temp = aes.EncryptCBC(xorTemp, key, tempIv);
+        temp = encryptAes(xorTemp, key, tempIv);
         iv = temp;
         offset += AES_BLOCK_SIZE;
     }
@@ -60,4 +64,16 @@ vector<uint8_t> CMAC::getCMAC(const vector<uint8_t>& data) {
     cmac = {iv.begin(), iv.begin() + AES_BLOCK_SIZE / 2};
 
     return cmac;
+}
+
+void DesfireCrypto::setIv(const vector<uint8_t> &_iv) {
+    iv = _iv;
+}
+
+vector<uint8_t> DesfireCrypto::encryptAes(vector<uint8_t> &data, const vector<uint8_t> &_key, const vector<uint8_t> &_iv) {
+    return aes.EncryptCBC(data, _key, _iv);
+}
+
+vector<uint8_t> DesfireCrypto::decryptAes(vector<uint8_t> &data, const vector<uint8_t> &_key, const vector<uint8_t> &_iv) {
+    return aes.DecryptCBC(data, _key, _iv);
 }

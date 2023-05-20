@@ -4,7 +4,12 @@
 
 using namespace std;
 
-class CMAC {
+#define CRC32_POLY     0x04C11DB7
+#define CRC32_POLY_REV 0xEDB88320
+#define CRC32_NUMBYTES 4
+#define CRC32_NUMBITS  (8 * CRC32_NUMBYTES)
+
+class DesfireCrypto {
 
     private:
     AES aes;
@@ -12,6 +17,8 @@ class CMAC {
     vector<uint8_t> key1;
     vector<uint8_t> key2;
     vector<uint8_t> iv;
+
+    public:
 
     /**
      * @name generateSubkeys
@@ -25,7 +32,29 @@ class CMAC {
     */
     void generateSubkeys();
 
-    public:
+    /**
+     * @name setKey
+     * @details Set IV
+     * @param _iv = Session obtained during authentication
+     * @return void
+    */
+    void setIv(const vector<uint8_t> &_iv);
+
+    /**
+     * @name encryptAes
+     * @details Encrypt data using AES-128
+     * @param data = Data to be encrypted
+     * @return Encrypted data
+    */
+    vector<uint8_t> encryptAes(vector<uint8_t> &data, const vector<uint8_t> &key, const vector<uint8_t> &iv);
+
+    /**
+     * @name decryptAes
+     * @details Decrypt data using AES-128
+     * @param data = Data to be decrypted
+     * @return Decrypted data
+    */
+    vector<uint8_t> decryptAes(vector<uint8_t> &data, const vector<uint8_t> &key, const vector<uint8_t> &iv);
 
     /**
      * @name initCMAC
@@ -35,7 +64,7 @@ class CMAC {
      * @param _iv = IV obtained during authentication
      * @return void
     */
-    void initCMAC(const vector<uint8_t>& _key, const vector<uint8_t>& _iv);
+    void initCMAC(const vector<uint8_t> &_key, const vector<uint8_t> &_iv);
 
     /**
      * @name getCMAC
@@ -47,11 +76,11 @@ class CMAC {
      * @details 6. For each block, xor with previous IV obtain in last process. [ xorVec(blocks[i], iv, blocks[i]); ]
      * @details 7. Encrypt xor'ed block with AES-128 [ aes.EncryptCBC(blocks[i], key, iv); ] iv used for encryption should be all zero's
      * @details 8. Update iv with encrypted block
-     * @details 9. Return last block of iv as CMAC only first 8 bytes are required
+     * @details 9. Return last block of iv as DesfireCrypto only first 8 bytes are required
      * @param _data
-     * @return cmac.
+     * @return desfire_crypto.
     */
-    vector<uint8_t> getCMAC(const vector<uint8_t>& _data);
+    vector<uint8_t> getCMAC(const vector<uint8_t> &_data);
 
     /**
      * @name leftShift
@@ -61,7 +90,7 @@ class CMAC {
      * @param outputBuffer = Output buffer
      * @return void
     */
-    static void leftShift(const vector<uint8_t>& inputBuffer, vector<uint8_t>& outputBuffer) {
+    static void leftShift(const vector<uint8_t> &inputBuffer, vector<uint8_t> &outputBuffer) {
         outputBuffer.clear();
         outputBuffer.resize(inputBuffer.size());
         uint8_t overflow = 0;
@@ -79,9 +108,9 @@ class CMAC {
      * @param data = Vector to be printed
      * @return void
     */
-    static void vecPrint(const string& message, const vector<unsigned char>& data) {
+    static void vecPrint(const string &message, const vector<unsigned char> &data) {
         cout << message << " -> \t\t";
-        for (unsigned char i : data) {
+        for (unsigned char i: data) {
             printf("%02X", i);
         }
         cout << " | " << data.size() << endl;
@@ -95,13 +124,55 @@ class CMAC {
      * @param vector2 = Second vector
      * @param result = Resultant vector
     */
-    static void xorVec(const vector<uint8_t>& vector1, const vector<uint8_t>& vector2, vector<uint8_t>& result) {
+    static void xorVec(const vector<uint8_t> &vector1, const vector<uint8_t> &vector2, vector<uint8_t> &result) {
         size_t size = min(vector1.size(), vector2.size());
         result.clear();
         result.reserve(size);
         for (size_t i = 0; i < size; ++i) {
             result.push_back(vector1[i] ^ vector2[i]);
         }
+    }
+
+    /**
+     * @name Crc32
+     * @brief Generate a CRC checksum of width 32 for the given data array.
+     * @param data Pointer to the data block.
+     * @param len Length of the data block.
+     * @param result Pointer to the CRC checksum array, in big endian format [modified].
+     * @return void
+     * @details Operation:
+     * - Load the register with 0 bits.
+     * - For each byte in the data block:
+     *     - Shift the register left by 8 bits, reading the next byte into the register.
+     *     - For each bit in the current byte (from MSB to LSB):
+     *         - If the MSB of the register is 1, perform an XOR operation with the polynomial (0x04C11DB7).
+     *         - Shift the register left by 1 bit.
+     * - The register now contains the CRC checksum, which is stored in the result array in big endian format.
+     */
+    static void crc32(uint8_t *data, size_t len, uint8_t *crc) {
+
+        uint32_t reg = 0;
+        int current_bit;
+        uint8_t current_byte;
+        int byte;
+        uint8_t popped_bit;
+
+        len += CRC32_NUMBYTES;
+
+        while (len--) {
+            current_byte = *data++;
+            for (current_bit = 8; current_bit > 0; current_bit--) {
+                popped_bit = reg >> (CRC32_NUMBITS - 1);
+                reg = (reg << 1) | ((len < CRC32_NUMBYTES) ? 0 : (current_byte >> 7));
+                current_byte <<= 1;
+                if (popped_bit) reg ^= CRC32_POLY;
+            }
+        }
+
+        for (byte = 0; byte < CRC32_NUMBYTES; byte++) {
+            crc[byte] = reg >> (8 * (CRC32_NUMBYTES - 1 - byte)) & 0xFF;
+        }
+
     }
 
 };
