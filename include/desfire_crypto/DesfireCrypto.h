@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "../aes/AES.h"
 
 using namespace std;
