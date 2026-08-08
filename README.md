@@ -1,56 +1,75 @@
 # DesfireCrypto
 
-DesfireCrypto is a C++ class that provides cryptographic functionalities for DESFire cards. It includes encryption, decryption, initialization of the Cipher-based Message Authentication Code (CMAC), and other utility functions.
+A small C++17 implementation of the cryptographic building blocks used by MIFARE DESFire integrations: AES-CBC encryption and decryption, AES-CMAC subkey generation, DESFire-style truncated CMAC output, CRC-32, and byte-vector helpers.
 
-## Functions
+The repository is intentionally compact so the byte-level operations remain inspectable.
 
-### generateSubkeys
-```cpp
-void generateSubkeys();
+## What it provides
+
+- AES-128 encryption and decryption
+- AES-CMAC generation with the first eight bytes returned for DESFire workflows
+- CMAC support for empty, single-block, and multi-block messages
+- Configurable session IV
+- DESFire CRC-32 helper
+- CMake library, example executable, and CTest target
+
+## Build and test
+
+Requirements: a C++17 compiler and CMake 3.25 or newer.
+
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
-This function generates key0, key1, and key2 for DESFire. It performs the following steps:
-1. Generate key0, key1, and key2.
-2. Encrypt 16 bytes of 0x00 with the key.
-3. Left shift key0 by 1 bit and store it in key1.
-4. If the Most Significant Bit (MSB) of key0 is 0x80, then key1 = (key0 << 1) ^ 0x87.
-5. Left shift key1 by 1 bit and store it in key2.
-6. If the MSB of key1 is 0x80, then key2 = (key1 << 1) ^ 0x87.
 
-### setIv
-```cpp
-void setIv(const vector<uint8_t> &_iv);
-```
-This function sets the Initialization Vector (IV) for encryption and decryption. The IV is obtained during authentication.
+The tests use the AES-CMAC examples from NIST SP 800-38B, truncated to the eight-byte value returned by `getCMAC()`.
 
-### encryptAes
-```cpp
-vector<uint8_t> encryptAes(vector<uint8_t> &data, const vector<uint8_t> &key, const vector<uint8_t> &iv);
-```
-This function encrypts the provided data using AES-128 algorithm. It takes the data, encryption key, and IV as inputs and returns the encrypted data as a vector of bytes.
+## Example
 
-### decryptAes
 ```cpp
-vector<uint8_t> decryptAes(vector<uint8_t> &data, const vector<uint8_t> &key, const vector<uint8_t> &iv);
-```
-This function decrypts the provided data using AES-128 algorithm. It takes the data, decryption key, and IV as inputs and returns the decrypted data as a vector of bytes.
+#include <cstdint>
+#include <vector>
 
-### initCMAC
-```cpp
-void initCMAC(const vector<uint8_t> &_key, const vector<uint8_t> &_iv);
-```
-This function initializes the Cipher-based Message Authentication Code (CMAC) with the provided key and IV. It is called during the authentication process.
+#include "desfire_crypto/DesfireCrypto.h"
 
-### getCMAC
-```cpp
-vector<uint8_t> getCMAC(const vector<uint8_t> &_data);
+int main() {
+    DesfireCrypto crypto;
+
+    std::vector<uint8_t> key = {
+        0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+        0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+    };
+    std::vector<uint8_t> iv(16, 0x00);
+    std::vector<uint8_t> message = {
+        0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
+        0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
+    };
+
+    crypto.initCMAC(key, iv);
+    crypto.generateSubkeys();
+    const auto cmac = crypto.getCMAC(message);
+}
 ```
-This function calculates the CMAC for the provided data. It performs the following steps:
-1. Checks if padding is required (`isPaddingRequired = dataLen % AES_BLOCK_SIZE != 0`).
-2. Calculates the number of blocks (`numberOfBlocks = isPaddingRequired ? dataLen / AES_BLOCK_SIZE + 1 : dataLen / AES_BLOCK_SIZE`).
-3. Splits the data into blocks, each of size 16 bytes (for AES).
-4. If padding is required, adds padding to the last block (`lastBlock.push_back(0x80); lastBlock.resize(AES_BLOCK_SIZE, 0x00);`).
-5. If `isPaddingRequired` is true, XORs the last block with key2; otherwise, XORs it with key1.
-6. For each block, XORs it with the previous IV obtained in the last process (`xorVec(blocks[i], iv, blocks[i]);`).
-7. Encrypts the XORed block with AES-128 using the key and IV (`aes.EncryptCBC(blocks[i], key, iv);`). The IV used for encryption should be all zeros.
-8. Updates the IV with the encrypted block.
-9. Returns the last block of the IV as DesfireCrypto, as only the first 8
+
+`getCMAC()` updates the object's IV as blocks are processed. Create a new instance or call `setIv()` when starting an independent calculation.
+
+## API overview
+
+| Method | Purpose |
+| --- | --- |
+| `initCMAC(key, iv)` | Initialize AES-CMAC state with a 16-byte key and IV |
+| `generateSubkeys()` | Derive the two AES-CMAC subkeys |
+| `getCMAC(data)` | Return the first eight bytes of the calculated CMAC |
+| `setIv(iv)` | Replace the current session IV |
+| `encryptAes(data, key, iv)` | AES-CBC encryption |
+| `decryptAes(data, key, iv)` | AES-CBC decryption |
+| `crc32(data, length, output)` | Calculate the four-byte CRC value |
+
+## Security status
+
+This implementation has not received an independent security audit. Validate it against the requirements and test vectors for your card/application profile before using it in production or for key-management operations. Do not log keys, derived subkeys, or session IVs.
+
+## License
+
+[MIT](LICENSE) © Govind Yadav

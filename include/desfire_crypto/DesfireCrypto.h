@@ -126,11 +126,12 @@ class DesfireCrypto {
     */
     static void xorVec(const vector<uint8_t> &vector1, const vector<uint8_t> &vector2, vector<uint8_t> &result) {
         size_t size = min(vector1.size(), vector2.size());
-        result.clear();
-        result.reserve(size);
+        vector<uint8_t> output;
+        output.reserve(size);
         for (size_t i = 0; i < size; ++i) {
-            result.push_back(vector1[i] ^ vector2[i]);
+            output.push_back(vector1[i] ^ vector2[i]);
         }
+        result.swap(output);
     }
 
     /**
